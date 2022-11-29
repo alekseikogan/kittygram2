@@ -1,3 +1,4 @@
+from email.policy import default
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
@@ -27,11 +28,23 @@ class CatSerializer(serializers.ModelSerializer):
     achievements = AchievementSerializer(many=True, required=False)
     color = serializers.ChoiceField(choices=CHOICES)
     age = serializers.SerializerMethodField()
-    
+    owner = serializers.PrimaryKeyRelatedField(
+        read_only=True,
+        default=serializers.CurrentUserDefault()
+    )
+
     class Meta:
         model = Cat
         fields = ('id', 'name', 'color', 'birth_year', 'achievements', 'owner',
                   'age')
+        read_only_fields = ('owner',)
+
+        validators = [UniqueTogetherValidator(
+            queryset=Cat.objects.all(),
+            fields=('name', 'owner',),
+            message='Не лезь блять она тебя сожрёт!'
+            )
+        ]
 
     def get_age(self, obj):
         return dt.datetime.now().year - obj.birth_year
@@ -44,8 +57,15 @@ class CatSerializer(serializers.ModelSerializer):
             achievements = validated_data.pop('achievements')
             cat = Cat.objects.create(**validated_data)
             for achievement in achievements:
-                current_achievement, status = Achievement.objects.get_or_create(
-                    **achievement)
+                current_achievement, status = Achievement.objects.get_or_create(**achievement)
                 AchievementCat.objects.create(
                     achievement=current_achievement, cat=cat)
             return cat
+
+    def validate_birth_year(self, value):
+        year = dt.date.today().year
+        if not (year - 40 < value <= year):
+            raise serializers.ValidationError('Проверьте год рождения!')
+        return value
+
+
